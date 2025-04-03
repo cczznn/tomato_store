@@ -69,12 +69,18 @@ public class ProductServiceImpl implements ProductService
         }
         Product newProduct = productVO.toPO();
         productRepository.save(newProduct);
-        StockpileVO stockpileVO = new StockpileVO();
-        stockpileVO.setId((int) (System.currentTimeMillis() % Integer.MAX_VALUE));
-        stockpileVO.setProductId(newProduct.getId());
-        stockpileVO.setAmount(0);
-        stockpileVO.setFrozen(0);
-        stockpileRepository.save(stockpileVO.toPO());
+        Stockpile stockpile = stockpileRepository.findByProductId(productVO.getId());
+        if(stockpile != null)
+            stockpile.setAmount(stockpile.getAmount() + 1);
+        else
+        {
+            StockpileVO stockpileVO = new StockpileVO();
+            stockpileVO.setId((int) (System.currentTimeMillis() % Integer.MAX_VALUE));
+            stockpileVO.setProductId(newProduct.getId());
+            stockpileVO.setAmount(1);
+            stockpileVO.setFrozen(0);
+            stockpileRepository.save(stockpileVO.toPO());
+        }
 
         return newProduct.toVO();
     }

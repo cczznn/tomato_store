@@ -5,11 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
-public interface ProductRepository extends JpaRepository<Product,String>
+public interface ProductRepository extends JpaRepository<Product,Integer>
 {
     Product findByTitle(String title);
-
-    Optional<Product> findById(Integer id);
-
-    void deleteById(Integer id);
 }
