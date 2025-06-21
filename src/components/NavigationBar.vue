@@ -92,9 +92,9 @@ const fetchCartCount = async () => {
   if (!isLoggedIn.value) return;
 
   try {
-    const response = await services.cartService.getCartItems();
-    if (response.data && response.data.data) {
-      cartItemCount.value = response.data.data.total || 0;
+    const response = await services.cart.getCartItems();
+    if (response && response.data) {
+      cartItemCount.value = response.data.total || 0;
     }
   } catch (error) {
     console.error('Failed to fetch cart count:', error);

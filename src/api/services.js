@@ -49,17 +49,17 @@ export const userService = {
   login(username, password) {
     return apiClient.post('/accounts/login', { username, password });
   },
-  
+
   // 注册
   register(userData) {
     return apiClient.post('/accounts', userData);
   },
-  
+
   // 获取用户详情
   getUserDetails(username) {
     return apiClient.get(`/accounts/${username}`);
   },
-  
+
   // 更新用户信息
   updateUserInfo(userData) {
     return apiClient.put('/accounts', userData);
@@ -72,32 +72,32 @@ export const ProductService = {
   getAllProducts() {
     return apiClient.get('/products');
   },
-  
+
   // 根据ID获取产品
   getProductById(id) {
     return apiClient.get(`/products/${id}`);
   },
-  
+
   // 创建新产品
   createProduct(product) {
     return apiClient.post('/products', product);
   },
-  
+
   // 更新产品
   updateProduct(product) {
     return apiClient.put('/products', product);
   },
-  
+
   // 删除产品
   deleteProduct(id) {
     return apiClient.delete(`/products/${id}`);
   },
-  
+
   // 获取产品库存
   getProductStockpile(productId) {
     return apiClient.get(`/products/stockpile/${productId}`);
   },
-  
+
   // 更新产品库存
   updateProductStockpile(productId, stockpile) {
     return apiClient.patch(`/products/stockpile/${productId}`, stockpile);
@@ -107,31 +107,28 @@ export const ProductService = {
 export const cartService = {
   // 添加商品到购物车
   addToCart(productId, quantity) {
+    console.log('API调用: 添加商品到购物车', { productId, quantity });
     return apiClient.post('/cart', { productId, quantity });
   },
-  
+
   // 获取购物车列表
   getCartItems() {
     return apiClient.get('/cart');
   },
-  
+
   // 更新购物车商品数量
   updateCartItemQuantity(cartItemId, quantity) {
     return apiClient.patch(`/cart/${cartItemId}`, { quantity });
   },
-  
+
   // 删除购物车商品
   removeCartItem(cartItemId) {
     return apiClient.delete(`/cart/${cartItemId}`);
   },
-  
+
   // 结算购物车（创建订单）
-  checkout(cartItemIds, shipping_address, payment_method) {
-    return apiClient.post('/cart/checkout', {
-      cartItemIds,
-      shipping_address,
-      payment_method
-    });
+  checkout(orderData) {
+    return apiClient.post('/cart/checkout', orderData);
   }
 };
 
@@ -141,12 +138,12 @@ export const orderService = {
   getOrders() {
     return apiClient.get('/orders');
   },
-  
+
   // 获取订单详情
   getOrderById(orderId) {
     return apiClient.get(`/orders/${orderId}`);
   },
-  
+
   // 发起支付
   payOrder(orderId) {
     return apiClient.post(`/orders/${orderId}/pay`);
@@ -158,17 +155,17 @@ export const advertisementService = {
   getAllAdvertisements() {
     return apiClient.get('/advertisements');
   },
-  
+
   // Create new advertisement
   createAdvertisement(advertisementData) {
     return apiClient.post('/advertisements', advertisementData);
   },
-  
+
   // Update advertisement
   updateAdvertisement(advertisementData) {
     return apiClient.put('/advertisements', advertisementData);
   },
-  
+
   // Delete advertisement
   deleteAdvertisement(id) {
     return apiClient.delete(`/advertisements/${id}`);
@@ -181,12 +178,12 @@ export const bookReviewService = {
   addBookComment(productId, commentData) {
     return apiClient.post(`/bookComment/${productId}`, commentData);
   },
-  
+
   // 获取指定产品的书评列表
   getBookComments(productId) {
     return apiClient.get(`/bookComment/${productId}`);
   },
-  
+
   // 删除书评
   deleteBookComment(commentId) {
     return apiClient.delete(`/bookComment/${commentId}`);
@@ -227,27 +224,27 @@ export const admincouponService = {
 
 export const CouponService = {
   // 用户优惠券相关API
-  
+
   // 获取所有可兑换优惠券
   getAvailableCoupons() {
     return apiClient.get('/api/coupons/available');
   },
-  
+
   // 获取优惠券详情
   getCouponDetail(couponId) {
     return apiClient.get(`/api/coupons/${couponId}`);
   },
-  
+
   // 获取用户拥有的优惠券
   getUserCoupons() {
     return apiClient.get('/api/coupons/my');
   },
-  
+
   // 兑换优惠券
   exchangeCoupon(couponId) {
     return apiClient.post(`/api/coupons/exchange/${couponId}`);
   },
-  
+
   // 使用优惠券
   applyCoupon(applyData) {
     return apiClient.post('/api/coupons/apply', applyData);

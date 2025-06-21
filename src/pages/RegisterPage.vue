@@ -108,7 +108,9 @@
           role: 'user',
           telephone: '',
           email: '',
-          location: ''
+          location: '',
+          memberLevel: 1,
+          isMember: true,
         },
         errorMessage: '',
         isLoading: false
@@ -188,6 +190,7 @@
         this.errorMessage = '';
         
         try {
+          console.log(this.registerForm);
           const response = await userService.register(this.registerForm);
           
           if (response.code === '200') {

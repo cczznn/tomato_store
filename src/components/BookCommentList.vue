@@ -120,6 +120,7 @@
 
 <script>
 import { bookReviewService } from '@/api/services';
+import logoUrl from '@/assets/logo.svg';
 
 export default {
   name: 'BookReviewList',
@@ -140,7 +141,8 @@ export default {
       newReview: {
         commentText: '',
         name: ''
-      }
+      },
+      logoUrl: logoUrl
     };
   },
   mounted() {
@@ -246,6 +248,13 @@ export default {
       if (!dateString) return '';
       const date = new Date(dateString);
       return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    },
+    
+    handleImageError(event) {
+      // 防止无限循环触发error事件
+      event.target.onerror = null;
+      // 使用本地logo.svg作为替代图片
+      event.target.src = this.logoUrl;
     }
   }
 };

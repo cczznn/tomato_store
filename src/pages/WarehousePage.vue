@@ -26,7 +26,7 @@
 
 <script setup>
 import AdminProductManager from '../components/AdminProductManager.vue'
-import StockpileManager from '../components/StockpileManager.vue'
+import StockpileManager from '../components/StockPileManager.vue'
 import { ref } from 'vue';
 
 const activeTab = ref('products');

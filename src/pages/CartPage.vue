@@ -32,7 +32,12 @@
             >
           </div>
           <div class="col-4 product-info">
-            <img :src="item.cover" alt="商品图片" class="product-image">
+            <img 
+              :src="item.cover" 
+              alt="商品图片" 
+              class="product-image"
+              @error="handleImageError"
+            >
             <div class="product-details">
               <h4>{{ item.title }}</h4>
               <p>{{ item.description }}</p>
@@ -42,7 +47,7 @@
           <div class="col-2 quantity">
             <div class="quantity-control">
               <button 
-                @click="updateQuantity(item.cartItemId, item.quantity - 1)" 
+                @click="decreaseQuantity(item.cartItemId, item.quantity)" 
                 :disabled="item.quantity <= 1"
                 class="quantity-btn"
               >-</button>
@@ -54,9 +59,13 @@
                 class="quantity-input"
               >
               <button 
-                @click="updateQuantity(item.cartItemId, item.quantity + 1)" 
+                @click="increaseQuantity(item.cartItemId, item.quantity)" 
                 class="quantity-btn"
+                :disabled="isMaxQuantity(item)"
               >+</button>
+            </div>
+            <div class="stock-info" v-if="getAvailableStock(item.productId) !== null">
+              <small>{{ getAvailableStock(item.productId) > 0 ? '有库存' : '无库存' }}</small>
             </div>
           </div>
           <div class="col-2 subtotal">¥{{ (item.price * item.quantity).toFixed(2) }}</div>
@@ -179,6 +188,8 @@
 
 <script>
 import services from '../api/services';
+import logoUrl from '../assets/logo.svg';
+import { ElMessage } from 'element-plus';
 
 export default {
   name: 'CartPage',
@@ -202,7 +213,9 @@ export default {
       },
       paymentMethod: 'ALIPAY',
       paymentForm: null,
-      currentOrder: null
+      currentOrder: null,
+      logoUrl: logoUrl,
+      productStockpiles: {} // 存储商品库存信息
     };
   },
   computed: {
@@ -219,27 +232,116 @@ export default {
     async fetchCart() {
       try {
         this.loading = true;
-        const response = await services.getCart();
-        this.cart = response.data.data;
+        const response = await services.cart.getCartItems();
+        console.log('购物车数据:', response);
+        
+        // 根据返回的数据结构正确设置购物车数据
+        if (response && response.code === '200' && response.data) {
+          this.cart = {
+            items: response.data.cartItems || [],
+            total: response.data.total || 0,
+            totalAmount: response.data.totalAmount || 0
+          };
+          
+          // 获取所有商品的库存信息
+          this.fetchAllProductStockpiles();
+        } else {
+          this.cart = {
+            items: [],
+            total: 0,
+            totalAmount: 0
+          };
+        }
+        
         this.loading = false;
       } catch (error) {
         console.error('Failed to fetch cart:', error);
         this.loading = false;
+        this.cart = {
+          items: [],
+          total: 0,
+          totalAmount: 0
+        };
+      }
+    },
+    
+    // 获取所有购物车商品的库存信息
+    async fetchAllProductStockpiles() {
+      try {
+        if (!this.cart.items || this.cart.items.length === 0) return;
+        
+        // console.log('开始获取商品库存信息...');
+        
+        // 为每个商品获取库存信息
+        for (const item of this.cart.items) {
+          if (!item.productId) continue;
+          
+          try {
+            const response = await services.ProductService.getProductStockpile(item.productId);
+            // console.log(`商品 ${item.productId} 库存API响应:`, response);
+            
+            if (response && response.code === '200' && response.data) {
+              // 存储库存信息，键为商品ID
+              this.productStockpiles[item.productId] = response.data;
+              // console.log(`商品 ${item.productId} 库存:`, response.data);
+              // console.log(`商品 ${item.productId} 的amount值:`, response.data.amount);
+            }
+          } catch (err) {
+            // console.error(`获取商品 ${item.productId} 库存失败:`, err);
+          }
+        }
+        
+        // console.log('所有商品库存信息:', this.productStockpiles);
+      } catch (error) {
+        // console.error('获取商品库存信息失败:', error);
       }
     },
     
     async updateQuantity(cartItemId, quantity) {
+
       if (quantity < 1) return;
       
+      // 查找当前购物车项
+
+      const cartItem = this.cart.items.find(item => item.cartItemId === cartItemId);
+      if (!cartItem) return;
+
+      // 检查是否是增加数量的操作
+      const isIncreasing = quantity > cartItem.quantity;
+      
+      // 只有在增加数量且库存为0时才拒绝操作
+      if (isIncreasing) {
+        const stockpile = this.productStockpiles[cartItem.productId];
+        if (stockpile) {
+          // 将amount转换为数字进行比较
+          const amount = parseInt(stockpile.amount || 0, 10);
+          // console.log(`更新数量 - 商品 ${cartItem.productId} 库存: ${amount}, 类型: ${typeof amount}`);
+          
+          if (amount <= 0) {
+            ElMessage({
+              type: 'warning',
+              message: `库存不足，当前无可用库存`
+            });
+            // 恢复原来的数量
+            cartItem.quantity = cartItem.quantity;
+            return;
+          }
+        }
+      }
+      console.log("update");
       try {
         this.loading = true;
-        await services.updateCartItem(cartItemId, quantity);
+        await services.cart.updateCartItemQuantity(cartItemId, quantity);
+        console.log(cartItemId,quantity);
         await this.fetchCart();
         this.calculateSelectedTotal();
       } catch (error) {
         console.error('Failed to update quantity:', error);
         if (error.response && error.response.data) {
-          alert(error.response.data.msg || '更新数量失败');
+          ElMessage({
+            type: 'error',
+            message: error.response.data.msg || '更新数量失败'
+          });
         }
         this.loading = false;
       }
@@ -250,7 +352,7 @@ export default {
       
       try {
         this.loading = true;
-        await services.removeCartItem(cartItemId);
+        await services.cart.removeCartItem(cartItemId);
         
         // Remove from selected items if present
         const index = this.selectedItems.indexOf(cartItemId);
@@ -274,7 +376,7 @@ export default {
         this.loading = true;
         
         for (const cartItemId of this.selectedItems) {
-          await services.removeCartItem(cartItemId);
+          await services.cart.removeCartItem(cartItemId);
         }
         
         this.selectedItems = [];
@@ -308,7 +410,10 @@ export default {
     
     proceedToCheckout() {
       if (this.selectedItems.length === 0) {
-        alert('请至少选择一件商品');
+        ElMessage({
+          type: 'warning',
+          message: '请至少选择一件商品'
+        });
         return;
       }
       
@@ -325,19 +430,23 @@ export default {
         
         const orderData = {
           cartItemIds: this.selectedItems,
-          shipping_address: this.shippingAddress,
-          payment_method: this.paymentMethod
+          receiverInfoVO: this.shippingAddress,
+          paymentMethod: this.paymentMethod
         };
         
-        const response = await services.checkout(orderData);
-        this.currentOrder = response.data.data;
+        const response = await services.cart.checkout(orderData);
+        this.currentOrder = response.data || response;
         
         this.showCheckoutModal = false;
+        console.log(this.currentOrder);
         await this.initiatePayment(this.currentOrder.orderId);
       } catch (error) {
         console.error('Failed to create order:', error);
         if (error.response && error.response.data) {
-          alert(error.response.data.msg || '创建订单失败');
+          ElMessage({
+            type: 'error',
+            message: error.response.data.msg || '创建订单失败'
+          });
         }
         this.loading = false;
       }
@@ -345,15 +454,24 @@ export default {
     
     validateShippingAddress() {
       if (!this.shippingAddress.name) {
-        alert('请填写收货人姓名');
+        ElMessage({
+          type: 'warning',
+          message: '请填写收货人姓名'
+        });
         return false;
       }
       if (!this.shippingAddress.phone) {
-        alert('请填写联系电话');
+        ElMessage({
+          type: 'warning',
+          message: '请填写联系电话'
+        });
         return false;
       }
       if (!this.shippingAddress.address) {
-        alert('请填写详细地址');
+        ElMessage({
+          type: 'warning',
+          message: '请填写详细地址'
+        });
         return false;
       }
       return true;
@@ -361,14 +479,18 @@ export default {
     
     async initiatePayment(orderId) {
       try {
-        const response = await services.payOrder(orderId);
-        this.paymentForm = response.data.data.paymentForm;
+        console.log(orderId)
+        const response = await services.order.payOrder(orderId);
+        this.paymentForm = response.data?.paymentForm || response.paymentForm;
         this.showPaymentForm = true;
         this.loading = false;
       } catch (error) {
         console.error('Failed to initiate payment:', error);
         if (error.response && error.response.data) {
-          alert(error.response.data.msg || '发起支付失败');
+          ElMessage({
+            type: 'error',
+            message: error.response.data.msg || '发起支付失败'
+          });
         }
         this.loading = false;
       }
@@ -379,6 +501,48 @@ export default {
       this.paymentForm = null;
       // Refresh cart after closing payment modal
       this.fetchCart();
+    },
+    
+    // 处理图片加载错误
+    handleImageError(event) {
+      // 防止无限循环触发error事件
+      event.target.onerror = null;
+      // 使用本地logo.svg作为替代图片
+      event.target.src = this.logoUrl;
+    },
+    
+    isMaxQuantity(item) {
+      if (!item.productId || !this.productStockpiles[item.productId]) return false;
+      
+      const stockpile = this.productStockpiles[item.productId];
+      // 将amount转换为数字进行比较
+      const amount = parseInt(stockpile.amount || 0, 10);
+      // console.log(`商品 ${item.productId} 库存: ${amount}, 类型: ${typeof amount}`);
+      
+      // 只有当库存为0或小于0时才禁用按钮
+      const result = amount <= 0;
+      // console.log(`商品 ${item.productId} isMaxQuantity: ${result}`);
+      return result;
+    },
+    
+    getAvailableStock(productId) {
+      if (!this.productStockpiles[productId]) return null;
+      
+      const stockpile = this.productStockpiles[productId];
+      // 将amount转换为数字
+      return parseInt(stockpile.amount || 0, 10);
+    },
+    
+    decreaseQuantity(cartItemId, quantity) {
+      if (quantity > 1) {
+        this.updateQuantity(cartItemId, quantity - 1);
+      }
+    },
+    
+    increaseQuantity(cartItemId, quantity) {
+      if (!this.isMaxQuantity(this.cart.items.find(item => item.cartItemId === cartItemId))) {
+        this.updateQuantity(cartItemId, quantity + 1);
+      }
     }
   }
 };
@@ -644,5 +808,16 @@ h1 {
 
 .ms-3 {
   margin-left: 15px;
+}
+
+.stock-info {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #6c757d;
+  text-align: center;
+}
+
+.stock-info small {
+  display: block;
 }
 </style>

@@ -38,7 +38,7 @@
         <div class="product-stock">
           <span class="stock-label">库存：</span>
           <span class="stock-value" :class="{ 'out-of-stock': isOutOfStock }">
-            {{ isOutOfStock ? '缺货' : `${stockpile.quantity}件` }}
+            {{ isOutOfStock ? '缺货' : `${getAvailableStock()}件` }}
           </span>
         </div>
         <div class="product-rating">
@@ -73,7 +73,7 @@
               <button @click="increaseQuantity" :disabled="quantity >= maxQuantity || isOutOfStock">+</button>
             </div>
             <span class="stock-hint" v-if="!isOutOfStock">
-              (库存{{ stockpile.quantity }}件)
+              (库存{{ getAvailableStock() }}件)
             </span>
           </div>
           
@@ -86,17 +86,8 @@
             >
               <span v-if="loadingActions.addToCart">加入中...</span>
               <span v-else-if="isOutOfStock">缺货</span>
+              <span v-else-if="props.cartItem">更新购物车 ({{ props.cartItem.quantity }}+{{ quantity }})</span>
               <span v-else>加入购物车</span>
-            </button>
-            <button 
-              class="btn btn-buy" 
-              @click="buyNow"
-              :disabled="isOutOfStock || loadingActions.buyNow"
-              :class="{ 'loading': loadingActions.buyNow }"
-            >
-              <span v-if="loadingActions.buyNow">处理中...</span>
-              <span v-else-if="isOutOfStock">缺货</span>
-              <span v-else>立即购买</span>
             </button>
           </div>
         </div>
@@ -107,6 +98,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 
 // 接收商品数据和相关状态
 const props = defineProps({
@@ -120,22 +112,66 @@ const props = defineProps({
   },
   loadingActions: {
     type: Object,
-    default: () => ({ addToCart: false, buyNow: false })
+    default: () => ({ addToCart: false })
+  },
+  cartItem: {
+    type: Object,
+    default: null
   }
 })
 
 // 定义事件
-const emit = defineEmits(['add-to-cart', 'buy-now'])
+const emit = defineEmits(['add-to-cart'])
 
 // 商品数量
 const quantity = ref(1)
 const maxQuantity = computed(() => {
-  return Math.max(1, props.stockpile?.quantity || 0)
+  console.log('计算最大购买数量:', props.stockpile);
+  
+  // 根据StockpileVO结构获取库存数据
+  const stockpileData = props.stockpile?.data || props.stockpile;
+  
+  if (stockpileData) {
+    // 可用库存 = 总库存(amount) - 冻结库存(frozen)
+    const availableStock = 
+      typeof stockpileData.amount === 'number' && 
+      typeof stockpileData.frozen === 'number' ? 
+      stockpileData.amount - stockpileData.frozen : 0;
+    
+    return Math.max(1, availableStock);
+  }
+  
+  return 1;
 })
 
 // 检查库存是否充足
 const isOutOfStock = computed(() => {
-  return props.stockpile?.quantity <= 0
+  console.log('库存检查:', props.stockpile);
+  // 检查stockpile是否为null或undefined
+  if (!props.stockpile) return true;
+  
+  // 检查是否有错误码
+  if (props.stockpile.code && props.stockpile.code !== '200') {
+    console.log('库存API返回错误:', props.stockpile);
+    return true;
+  }
+  
+  // 根据StockpileVO结构获取库存数据
+  const stockpileData = props.stockpile.data || props.stockpile;
+  
+  // 检查amount和frozen字段
+  if (stockpileData) {
+    // 可用库存 = 总库存(amount) - 冻结库存(frozen)
+    const availableStock = 
+      typeof stockpileData.amount === 'number' && 
+      typeof stockpileData.frozen === 'number' ? 
+      stockpileData.amount - stockpileData.frozen : 0;
+    
+    console.log('可用库存:', availableStock);
+    return availableStock <= 0;
+  }
+  
+  return true;
 })
 
 // 格式化价格（整数部分）
@@ -151,52 +187,60 @@ const getPriceDecimal = (price) => {
 
 // 增加数量
 const increaseQuantity = () => {
+  console.log('增加前数量:', quantity.value);
+  console.log('最大数量:', maxQuantity.value);
+  console.log('库存数量:', props.stockpile?.quantity);
+  
   if (quantity.value < maxQuantity.value) {
-    quantity.value++
+    quantity.value++;
+    console.log('增加后数量:', quantity.value);
+  } else {
+    ElMessage.warning(`最多只能购买${maxQuantity.value}件`);
   }
 }
 
 // 减少数量
 const decreaseQuantity = () => {
+  console.log('减少前数量:', quantity.value);
   if (quantity.value > 1) {
-    quantity.value--
+    quantity.value--;
+    console.log('减少后数量:', quantity.value);
   }
 }
 
 // 加入购物车
 const addToCart = () => {
   if (isOutOfStock.value) {
-    ElMessage.warning('商品库存不足')
-    return
+    ElMessage.warning('商品库存不足');
+    return;
   }
   
   if (quantity.value > maxQuantity.value) {
-    ElMessage.warning(`库存不足，最多只能购买${maxQuantity.value}件`)
-    return
+    ElMessage.warning(`库存不足，最多只能购买${maxQuantity.value}件`);
+    quantity.value = maxQuantity.value; // 自动调整为最大可购买数量
+    return;
   }
   
-  emit('add-to-cart', quantity.value)
+  emit('add-to-cart', quantity.value);
 }
 
-// 立即购买
-const buyNow = () => {
-  if (isOutOfStock.value) {
-    ElMessage.warning('商品库存不足')
-    return
+// 计算可用库存
+const getAvailableStock = () => {
+  const stockpileData = props.stockpile?.data || props.stockpile;
+  
+  if (stockpileData && 
+      typeof stockpileData.amount === 'number' && 
+      typeof stockpileData.frozen === 'number') {
+    return Math.max(0, stockpileData.amount - stockpileData.frozen);
   }
   
-  if (quantity.value > maxQuantity.value) {
-    ElMessage.warning(`库存不足，最多只能购买${maxQuantity.value}件`)
-    return
-  }
-  
-  emit('buy-now', quantity.value)
+  return 0;
 }
 
 // 监听库存变化，调整数量
-watch(() => props.stockpile?.quantity, (newStock) => {
-  if (newStock !== undefined && quantity.value > newStock && newStock > 0) {
-    quantity.value = Math.min(quantity.value, newStock)
+watch(() => getAvailableStock(), (newAvailableStock) => {
+  if (newAvailableStock !== undefined && quantity.value > newAvailableStock && newAvailableStock > 0) {
+    quantity.value = Math.min(quantity.value, newAvailableStock)
   }
 }, { immediate: true })
 </script>
@@ -465,15 +509,6 @@ watch(() => props.stockpile?.quantity, (newStock) => {
   color: white;
 }
 
-.btn-buy {
-  background: #ff6b35;
-  color: white;
-}
-
-.btn-buy:hover {
-  background: #e55a2b;
-}
-
 /* 响应式设计 */
 @media (max-width: 768px) {
   .product-layout {
@@ -492,10 +527,6 @@ watch(() => props.stockpile?.quantity, (newStock) => {
   
   .price-value {
     font-size: 28px;
-  }
-  
-  .action-buttons {
-    flex-direction: column;
   }
 }
 </style>

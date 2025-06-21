@@ -22,8 +22,8 @@
         :product="product" 
         :stockpile="stockpile"
         :loading-actions="loadingActions"
+        :cart-item="cartItem"
         @add-to-cart="handleAddToCart"
-        @buy-now="handleBuyNow"
       />
       
       <!-- 商品不存在 -->
@@ -39,6 +39,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import ProductDetailCard from '@/components/ProductDetailCard.vue'
 import services from '@/api/services.js'
 
@@ -51,9 +52,9 @@ const stockpile = ref(null)
 const loading = ref(true)
 const error = ref('')
 const loadingActions = ref({
-  addToCart: false,
-  buyNow: false
+  addToCart: false
 })
+const cartItem = ref(null) // 存储购物车中的商品信息
 
 // 获取商品详情
 const fetchProductDetail = async () => {
@@ -66,14 +67,33 @@ const fetchProductDetail = async () => {
       throw new Error('商品ID不能为空')
     }
 
-    // 并行获取商品详情和库存信息
-    const [productResponse, stockpileResponse] = await Promise.all([
+    // 并行获取商品详情、库存信息和购物车信息
+    const [productResponse, stockpileResponse, cartResponse] = await Promise.all([
       services.ProductService.getProductById(productId),
-      services.ProductService.getProductStockpile(productId)
+      services.ProductService.getProductStockpile(productId),
+      services.cart.getCartItems()
     ])
 
     product.value = productResponse.data || productResponse
+    if (product.value && !product.value.id && productId) {
+      // 确保商品对象有id字段
+      product.value.id = productId
+    }
+    
     stockpile.value = stockpileResponse.data || stockpileResponse
+    console.log('获取到的商品信息:', product.value)
+    
+    // 检查商品是否已在购物车中
+    if (cartResponse && cartResponse.code === '200' && cartResponse.data && cartResponse.data.cartItems) {
+      const items = cartResponse.data.cartItems
+      const foundItem = items.find(item => item.productId === productId && item.state === 'SHOW')
+      if (foundItem) {
+        cartItem.value = foundItem
+        console.log('商品已在购物车中:', foundItem)
+      } else {
+        cartItem.value = null
+      }
+    }
     
   } catch (err) {
     console.error('获取商品详情失败:', err)
@@ -98,13 +118,52 @@ const handleAddToCart = async (quantity) => {
   try {
     loadingActions.value.addToCart = true
     
-    await services.cart.addToCart(product.value.id, quantity)
+    // 获取商品ID，确保它存在
+    const productId = product.value.id || route.params.id
+    if (!productId) {
+      throw new Error('商品ID不能为空')
+    }
     
-    // 显示成功提示
-    ElMessage({
-      type: 'success',
-      message: '商品已加入购物车'
-    })
+    console.log('添加到购物车的商品:', product.value)
+    console.log('商品ID:', productId)
+    console.log('数量:', quantity)
+    
+    let response
+    
+    // 检查商品是否已在购物车中
+    //todo 这里检测有问题
+    if (cartItem.value && cartItem.value.state === 'SHOW') {
+      // 已在购物车中，更新数量
+      const newQuantity = cartItem.value.quantity + quantity
+      console.log('更新购物车项，新数量:', newQuantity)
+      response = await services.cart.updateCartItemQuantity(cartItem.value.cartItemId, newQuantity)
+      
+      if (response && response.code === '200') {
+        ElMessage({
+          type: 'success',
+          message: '购物车数量已更新'
+        })
+      }
+    } else {
+      // 不在购物车中，添加新项
+      response = await services.cart.addToCart(productId, quantity)
+      
+      if (response && response.code === '200') {
+        ElMessage({
+          type: 'success',
+          message: '商品已加入购物车'
+        })
+      }
+    }
+    
+    // 检查响应状态
+    if (response && response.code === '200') {
+      // 加入购物车后刷新界面
+      await fetchProductDetail()
+    } else {
+      // 处理API返回的错误
+      throw new Error(response?.msg || '添加购物车失败')
+    }
     
   } catch (err) {
     console.error('加入购物车失败:', err)
@@ -117,6 +176,8 @@ const handleAddToCart = async (quantity) => {
       }, 1500)
     } else if (err.response?.status === 400) {
       errorMessage = err.response.data?.message || '库存不足'
+    } else if (err.message) {
+      errorMessage = err.message
     }
     
     ElMessage({
@@ -125,46 +186,6 @@ const handleAddToCart = async (quantity) => {
     })
   } finally {
     loadingActions.value.addToCart = false
-  }
-}
-
-// 处理立即购买
-const handleBuyNow = async (quantity) => {
-  try {
-    loadingActions.value.buyNow = true
-    
-    // 先加入购物车，然后跳转到结算页面
-    await services.cart.addToCart(product.value.id, quantity)
-    
-    // 跳转到结算页面
-    router.push({
-      path: '/checkout',
-      query: {
-        productId: product.value.id,
-        quantity: quantity,
-        direct: 'true' // 标记为直接购买
-      }
-    })
-    
-  } catch (err) {
-    console.error('立即购买失败:', err)
-    
-    let errorMessage = '购买失败'
-    if (err.response?.status === 401) {
-      errorMessage = '请先登录'
-      setTimeout(() => {
-        router.push('/login')
-      }, 1500)
-    } else if (err.response?.status === 400) {
-      errorMessage = err.response.data?.message || '库存不足'
-    }
-    
-    ElMessage({
-      type: 'error',
-      message: errorMessage
-    })
-  } finally {
-    loadingActions.value.buyNow = false
   }
 }
 

@@ -82,6 +82,7 @@
 import NavigationBar from '@/components/NavigationBar.vue';
 import BookReviewList from '@/components/BookCommentList.vue';
 import { ProductService } from '@/api/services';
+import logoUrl from '@/assets/logo.svg';
 
 export default {
   name: 'BookReviewPage',
@@ -95,7 +96,8 @@ export default {
       filteredProducts: [],
       selectedProductId: null,
       searchKeyword: '',
-      loadingProducts: false
+      loadingProducts: false,
+      logoUrl: logoUrl
     };
   },
   computed: {
@@ -149,7 +151,10 @@ export default {
     },
     
     handleImageError(event) {
-      event.target.src = '/api/placeholder/100/120';
+      // 防止无限循环触发error事件
+      event.target.onerror = null;
+      // 使用本地logo.svg作为替代图片
+      event.target.src = this.logoUrl;
     }
   }
 };
