@@ -1,0 +1,7 @@
+﻿*.jar
+*.zip
+*.log
+.env
+node_modules/
+target/
+dist/
